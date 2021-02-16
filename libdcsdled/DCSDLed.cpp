@@ -49,12 +49,6 @@ void DCSDLed::connect(bool waitForDevice){
 }
 
 void DCSDLed::disconnect(){
-    try {
-        enableAllLed(1);
-        setAllLed(1);
-    } catch (...) {
-        //
-    }
     if (_isConnected) {
         ftdi_usb_close(_ftdi); _isConnected = false;
     }
