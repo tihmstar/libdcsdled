@@ -49,12 +49,6 @@ void DCSDLed::connect(bool waitForDevice){
 }
 
 void DCSDLed::disconnect(){
-    try {
-        enableAllLed(1);
-        setAllLed(1);
-    } catch (...) {
-        //
-    }
     if (_isConnected) {
         ftdi_usb_close(_ftdi); _isConnected = false;
     }
@@ -124,6 +118,18 @@ void DCSDLed::loopEvent(){
     ul.lock();
 }
 
+void DCSDLed::setLedInternal(LedColor led, bool on){
+    int err = 0;
+    uint8_t v = 0;
+    retassure(!(err = ftdi_read_pins(_ftdi,&v)), "Failed to read pins with error=%d (%s)\n", err, ftdi_get_error_string(_ftdi));
+    if (on) {
+        v |= led;
+    }else{
+        v &= ~led;
+    }
+    retassure(!(err = ftdi_set_bitmode(_ftdi, v, BITMODE_CBUS)), "Failed to set led with error=%d (%s)\n", err, ftdi_get_error_string(_ftdi));
+}
+
 #pragma mark public
 void DCSDLed::enableLed(LedColor led, bool on){
     std::unique_lock<std::mutex> ul(_ledlock);
@@ -140,16 +146,7 @@ void DCSDLed::enableLed(LedColor led, bool on){
 
 void DCSDLed::setLed(LedColor led, bool on){
     std::unique_lock<std::mutex> ul(_ledlock);
-    int err = 0;
-    uint8_t v = 0;
-    retassure(!(err = ftdi_read_pins(_ftdi,&v)), "Failed to read pins with error=%d (%s)\n", err, ftdi_get_error_string(_ftdi));
-    if (on) {
-        v |= led;
-    }else{
-        v &= ~led;
-    }
-    retassure(!(err = ftdi_set_bitmode(_ftdi, v, BITMODE_CBUS)), "Failed to set led with error=%d (%s)\n", err, ftdi_get_error_string(_ftdi));
-    
+    setLedInternal(led,on);
     //disable blinking for leds that we will update
     if (led & LedColorRed) {
         _blinkerIters[0] = {};
@@ -170,20 +167,21 @@ void DCSDLed::setAllLed(bool on){
     setLed((DCSDLed::LedColor)(DCSDLed::LedColorRed | DCSDLed::LedColorGreen | DCSDLed::LedColorYellow), on);
 }
 
-void DCSDLed::blinkLed(LedColor led, uint64_t usec_on, uint64_t usec_off){
+void DCSDLed::blinkLeds(BlinkCfg red, BlinkCfg green, BlinkCfg yellow){
+    std::unique_lock<std::mutex> ul(_ledlock);
     //rgy
-    if (!usec_off) {
-        usec_off = usec_on;
-    }
-    
+    if (!red.usec_off)      red.usec_off      = red.usec_on;
+    if (!green.usec_off)    green.usec_off    = green.usec_on;
+    if (!yellow.usec_off)   yellow.usec_off   = yellow.usec_on;
+
     //disable blinking for leds that we will update
-    if (led & LedColorRed) {
+    if (red.usec_on) {
         _blinkerIters[0] = {};
     }
-    if (led & LedColorGreen) {
+    if (green.usec_on) {
         _blinkerIters[1] = {};
     }
-    if (led & LedColorYellow) {
+    if (yellow.usec_on) {
         _blinkerIters[2] = {};
     }
     
@@ -202,7 +200,12 @@ void DCSDLed::blinkLed(LedColor led, uint64_t usec_on, uint64_t usec_off){
     }
     
     //adjust new sleep time
-    uint32_t newMaximalSleep = (uint32_t)GCD(_blinkerSleepTime, GCD(usec_on, usec_off));
+    uint32_t locmaxSleep = 0;
+    if (red.usec_on)    locmaxSleep = (uint32_t)GCD(GCD(GCD(red.usec_on, red.usec_off), red.usec_offset),locmaxSleep);
+    if (green.usec_on)  locmaxSleep = (uint32_t)GCD(GCD(GCD(green.usec_on, green.usec_off), green.usec_offset),locmaxSleep);
+    if (yellow.usec_on) locmaxSleep = (uint32_t)GCD(GCD(GCD(yellow.usec_on, yellow.usec_off), yellow.usec_offset),locmaxSleep);
+
+    uint32_t newMaximalSleep = (uint32_t)GCD(_blinkerSleepTime, locmaxSleep);
     if (newMaximalSleep != _blinkerSleepTime) {
         uint64_t factor = _blinkerSleepTime / newMaximalSleep;
         
@@ -214,23 +217,91 @@ void DCSDLed::blinkLed(LedColor led, uint64_t usec_on, uint64_t usec_off){
     }
     
     //finally write new iters
-    if (led & LedColorRed) {
+    if (red.usec_on) {
         _blinkerIters[0] = {
-            .onIters = usec_on / newMaximalSleep,
-            .offIters = usec_off / newMaximalSleep
+            .onIters = red.usec_on / newMaximalSleep,
+            .offIters = red.usec_off / newMaximalSleep
         };
+        if (red.usec_offset / newMaximalSleep < _blinkerIters[0].onIters) {
+            setLedInternal(LedColorRed,1);
+            _blinkerCurrent[0] = {
+                (red.usec_offset / newMaximalSleep),
+                0
+            };
+        }else{
+            setLedInternal(LedColorRed,0);
+            _blinkerCurrent[0] = {
+                0,
+                (red.usec_offset / newMaximalSleep) - _blinkerIters[0].onIters
+            };
+        }
     }
-    if (led & LedColorGreen) {
+    if (green.usec_on) {
         _blinkerIters[1] = {
-            .onIters = usec_on / newMaximalSleep,
-            .offIters = usec_off / newMaximalSleep
+            .onIters = green.usec_on / newMaximalSleep,
+            .offIters = green.usec_off / newMaximalSleep
         };
+        if (green.usec_offset / newMaximalSleep < _blinkerIters[1].onIters) {
+            setLedInternal(LedColorGreen,1);
+            _blinkerCurrent[1] = {
+                (green.usec_offset / newMaximalSleep),
+                0
+            };
+        }else{
+            setLedInternal(LedColorGreen,0);
+            _blinkerCurrent[1] = {
+                0,
+                (green.usec_offset / newMaximalSleep) - _blinkerIters[1].onIters
+            };
+        }
     }
-    if (led & LedColorYellow) {
+    if (yellow.usec_on) {
         _blinkerIters[2] = {
-            .onIters = usec_on / newMaximalSleep,
-            .offIters = usec_off / newMaximalSleep
+            .onIters = yellow.usec_on / newMaximalSleep,
+            .offIters = yellow.usec_off / newMaximalSleep
         };
+        if (yellow.usec_offset / newMaximalSleep < _blinkerIters[2].onIters) {
+            setLedInternal(LedColorYellow,1);
+            _blinkerCurrent[2] = {
+                (yellow.usec_offset / newMaximalSleep),
+                0
+            };
+        }else{
+            setLedInternal(LedColorYellow,0);
+            _blinkerCurrent[2] = {
+                0,
+                (yellow.usec_offset / newMaximalSleep) - _blinkerIters[2].onIters
+            };
+        }
     }
     _blinkerUpdate.notifyAll();
 }
+
+void DCSDLed::blinkLed(LedColor led, uint64_t usec_on, uint64_t usec_off){
+    BlinkCfg red = {};
+    BlinkCfg green = {};
+    BlinkCfg yellow = {};
+    if (led & LedColorRed)      red = {usec_on,usec_off};
+    if (led & LedColorGreen)    green = {usec_on,usec_off};
+    if (led & LedColorYellow)   yellow = {usec_on,usec_off};
+    blinkLeds(red, green, yellow);
+}
+
+#pragma mark predefined sequences
+void DCSDLed::sequenceSearching(){
+    uint32_t onPhase = (uint32_t)(USEC_PER_SEC*0.5);
+    blinkLeds({onPhase, onPhase*2, onPhase*0},
+              {onPhase, onPhase*2, onPhase*2},
+              {onPhase, onPhase*2, onPhase*1});
+}
+
+void DCSDLed::statePass(){
+    setAllLed(0);
+    setLed(LedColorGreen, 1);
+}
+
+void DCSDLed::stateFailed(){
+    setAllLed(0);
+    setLed(LedColorRed, 1);
+}
+

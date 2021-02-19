@@ -27,6 +27,11 @@ public:
         BlinkSpeedInProgress = (uint32_t)(USEC_PER_SEC*0.1),
         BlinkSpeedWorking = (uint32_t)(USEC_PER_SEC*0.05)
     };
+    struct BlinkCfg{
+        uint64_t usec_on = 0;
+        uint64_t usec_off = 0;
+        uint64_t usec_offset = 0;
+    };
 private:
     struct BlinkTimes{
         uint64_t onIters;
@@ -47,6 +52,9 @@ private:
 
     virtual void stopAction() noexcept override;
     virtual void loopEvent() override;
+    
+    void setLedInternal(LedColor led, bool on);
+
 public:
     DCSDLed(bool waitForDevice = false);
     ~DCSDLed();
@@ -57,7 +65,13 @@ public:
     void enableAllLed(bool on);
     void setAllLed(bool on);
     
+    void blinkLeds(BlinkCfg reg, BlinkCfg green, BlinkCfg yellow);
     void blinkLed(LedColor led, uint64_t usec_on = BlinkSpeedIdle, uint64_t usec_off = 0);
+    
+#pragma mark predefined modes
+    void sequenceSearching();
+    void statePass();
+    void stateFailed();
 };
 
 #endif /* DCSDLed_hpp */

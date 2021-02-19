@@ -19,16 +19,23 @@ int main(int argc, const char * argv[]) {
 
     led.setAllLed(false);
     
+    led.sequenceSearching();
+//    sleep(3);
+//
+//    
+//    led.blinkLed(DCSDLed::LedColorGreen, DCSDLed::BlinkSpeedIdle);
+//    led.blinkLed(DCSDLed::LedColorYellow, DCSDLed::BlinkSpeedWorking);
+//    led.blinkLed(DCSDLed::LedColorRed, DCSDLed::BlinkSpeedInProgress);
+//
+//    sleep(5);
+//    
+//    led.setLed(DCSDLed::LedColorRed, 1);
+//    led.setLed(DCSDLed::LedColorGreen, 0);
+//
+//    sleep(3);
+//    
+//    led.statePass();
     
-    led.blinkLed(DCSDLed::LedColorGreen, DCSDLed::BlinkSpeedIdle);
-    led.blinkLed(DCSDLed::LedColorYellow, DCSDLed::BlinkSpeedWorking);
-    led.blinkLed(DCSDLed::LedColorRed, DCSDLed::BlinkSpeedInProgress);
-
-    sleep(5);
-    
-    led.setLed(DCSDLed::LedColorRed, 1);
-    led.setLed(DCSDLed::LedColorGreen, 0);
-
     std::mutex lck;
     
     lck.lock();
