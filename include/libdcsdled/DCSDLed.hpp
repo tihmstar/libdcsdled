@@ -8,7 +8,7 @@
 #ifndef DCSDLed_hpp
 #define DCSDLed_hpp
 
-#include <libftdi1/ftdi.h>
+#include <ftdi.h>
 #include <libgeneral/Manager.hpp>
 #include <libgeneral/Event.hpp>
 #include <mutex>
@@ -28,9 +28,12 @@ public:
         BlinkSpeedWorking = (uint32_t)(USEC_PER_SEC*0.05)
     };
     struct BlinkCfg{
-        uint64_t usec_on = 0;
-        uint64_t usec_off = 0;
-        uint64_t usec_offset = 0;
+    public:
+        uint64_t usec_on;
+        uint64_t usec_off;
+        uint64_t usec_offset;
+        BlinkCfg(uint64_t on = 0, uint64_t off = 0, uint64_t offset = 0)
+            : usec_on(on), usec_off(off), usec_offset(offset){}
     };
 private:
     struct BlinkTimes{
@@ -65,7 +68,7 @@ public:
     void enableAllLed(bool on);
     void setAllLed(bool on);
     
-    void blinkLeds(BlinkCfg reg, BlinkCfg green, BlinkCfg yellow);
+    void blinkLeds(BlinkCfg red, BlinkCfg green, BlinkCfg yellow);
     void blinkLed(LedColor led, uint64_t usec_on = BlinkSpeedIdle, uint64_t usec_off = 0);
     
 #pragma mark predefined modes
